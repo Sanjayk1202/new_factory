@@ -1,61 +1,41 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Building2, User, Lock, Eye, EyeOff, Users, Layers } from 'lucide-react';
-import { ROLES, DIVISIONS, DEPARTMENTS } from '../../utils/constants';
+import { Building2, User, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
 const Login = () => {
   const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState(ROLES.EMPLOYEE);
-  const [selectedDivision, setSelectedDivision] = useState('production');
-  const [selectedDepartment, setSelectedDepartment] = useState('prod_line_a');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    
-    let userData = {
-      id: '1',
-      email: `${role}@factory.com`,
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${role}`
-    };
+    setError('');
+    setLoading(true);
 
-    // Set user data based on role
-    if (role === ROLES.ADMIN) {
-      userData.name = 'Admin User';
-      userData.division = 'production';
-      userData.department = 'prod_line_a';
-    } else if (role === ROLES.DIVISION_MANAGER) {
-      const division = DIVISIONS.find(d => d.id === selectedDivision);
-      userData.name = `${division?.name} Manager`;
-      userData.division = selectedDivision;
-      userData.department = null;
-    } else if (role === ROLES.DEPARTMENT_MANAGER) {
-      const division = DIVISIONS.find(d => d.id === selectedDivision);
-      const department = DEPARTMENTS[selectedDivision]?.find(d => d.id === selectedDepartment);
-      userData.name = `${department?.name} Manager`;
-      userData.division = selectedDivision;
-      userData.department = selectedDepartment;
-    } else {
-      userData.name = 'John Doe - Production Operator';
-      userData.division = selectedDivision;
-      userData.department = selectedDepartment;
+    if (!username || !password) {
+      setError('Please enter both username and password');
+      setLoading(false);
+      return;
     }
 
-    login(userData, role, selectedDivision, selectedDepartment);
+    const result = await login(username, password);
+    
+    if (!result.success) {
+      setError(result.error || 'Invalid credentials. Try: admin / admin123');
+    }
+    
+    setLoading(false);
   };
 
-  // Get departments for selected division
-  const getDepartmentsForDivision = (divisionId) => {
-    return DEPARTMENTS[divisionId] || [];
-  };
-
-  // Role descriptions
-  const roleDescriptions = {
-    [ROLES.ADMIN]: 'Full system access across all divisions',
-    [ROLES.DIVISION_MANAGER]: 'Manage an entire division with multiple departments',
-    [ROLES.DEPARTMENT_MANAGER]: 'Manage a specific department within a division',
-    [ROLES.EMPLOYEE]: 'Employee access to personal schedule and attendance',
-  };
+  const demoCredentials = [
+    { username: 'admin', password: 'admin123', role: 'Admin' },
+    { username: 'division.manager', password: 'password123', role: 'Division Manager' },
+    { username: 'dept.manager', password: 'password123', role: 'Department Manager' },
+    { username: 'john.doe', password: 'password123', role: 'Employee' },
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-gray-100 flex items-center justify-center p-4">
@@ -66,94 +46,34 @@ const Login = () => {
             <Building2 className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-gray-800">FactoryShift</h1>
-          <p className="text-gray-600 mt-2">Division-Based Attendance & Shift Management</p>
+          <p className="text-gray-600 mt-2">Smart Factory Attendance & Shift Management</p>
         </div>
 
         {/* Login Card */}
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Sign In</h2>
 
-          {/* Role Selection */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Select Role</label>
-            <div className="grid grid-cols-2 gap-2">
-              {Object.values(ROLES).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setRole(r)}
-                  className={`py-3 rounded-lg font-medium capitalize transition-all ${
-                    role === r
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {r.replace('_', ' ')}
-                </button>
-              ))}
-            </div>
-            <p className="text-sm text-gray-600 mt-2">{roleDescriptions[role]}</p>
-          </div>
-
-          {/* Division Selection (for non-admin roles) */}
-          {role !== ROLES.ADMIN && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Division
-              </label>
-              <select
-                value={selectedDivision}
-                onChange={(e) => {
-                  setSelectedDivision(e.target.value);
-                  // Reset department when division changes
-                  const depts = getDepartmentsForDivision(e.target.value);
-                  if (depts.length > 0) {
-                    setSelectedDepartment(depts[0].id);
-                  }
-                }}
-                className="input-field"
-              >
-                {DIVISIONS.map(division => (
-                  <option key={division.id} value={division.id}>
-                    {division.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Department Selection (for department managers and employees) */}
-          {(role === ROLES.DEPARTMENT_MANAGER || role === ROLES.EMPLOYEE) && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Department
-              </label>
-              <select
-                value={selectedDepartment}
-                onChange={(e) => setSelectedDepartment(e.target.value)}
-                className="input-field"
-              >
-                {getDepartmentsForDivision(selectedDivision).map(dept => (
-                  <option key={dept.id} value={dept.id}>
-                    {dept.name}
-                  </option>
-                ))}
-              </select>
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2">
+              <AlertCircle className="w-5 h-5 text-red-500" />
+              <p className="text-red-600 text-sm">{error}</p>
             </div>
           )}
 
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Employee ID / Email
+                Username
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <input
                   type="text"
-                  placeholder="Enter your ID or email"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Enter your username"
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  defaultValue={`${role}@factory.com`}
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -166,14 +86,17 @@ const Login = () => {
                 <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <input
                   type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
                   className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  defaultValue="password123"
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  disabled={loading}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -182,21 +105,41 @@ const Login = () => {
 
             <button
               type="submit"
-              className="w-full bg-blue-600 text-white font-semibold py-3.5 rounded-lg hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg"
+              disabled={loading}
+              className="w-full bg-blue-600 text-white font-semibold py-3.5 rounded-lg hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Sign In as {role.replace('_', ' ').toUpperCase()}
+              {loading ? 'Signing in...' : 'Sign In'}
             </button>
-
-            <p className="text-center text-gray-600 text-sm mt-6">
-              Demo Login: Use any credentials<br />
-              Role changes based on selection
-            </p>
           </form>
+
+          {/* Demo Credentials */}
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Demo Credentials</h4>
+            <div className="space-y-2">
+              {demoCredentials.map((cred, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setUsername(cred.username);
+                    setPassword(cred.password);
+                  }}
+                  className="w-full text-left p-2 bg-gray-50 hover:bg-gray-100 rounded text-sm"
+                >
+                  <span className="font-medium">{cred.role}:</span> {cred.username} / {cred.password}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-center text-gray-600 text-sm mt-6">
+            Test the system with different roles
+          </p>
         </div>
 
         <div className="text-center mt-8 text-gray-500 text-sm">
           <p>© 2024 FactoryShift. All rights reserved.</p>
-          <p className="mt-1">Division-Based Factory Management System</p>
+          <p className="mt-1">Complete Factory Management System</p>
         </div>
       </div>
     </div>

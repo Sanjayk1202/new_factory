@@ -1,150 +1,290 @@
 const API_BASE_URL = 'http://localhost:8000/api';
 
-// Generic API call function
-async function apiCall(endpoint, options = {}) {
+let authToken = localStorage.getItem('token');
+
+export const setAuthToken = (token) => {
+  authToken = token;
+  localStorage.setItem('token', token);
+};
+
+export const clearAuthToken = () => {
+  authToken = null;
+  localStorage.removeItem('token');
+};
+
+const apiCall = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
-  const token = localStorage.getItem('token');
   
-  const defaultOptions = {
-    headers: {
-      'Content-Type': 'application/json',
-    },
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
   };
 
-  if (token) {
-    defaultOptions.headers['Authorization'] = `Bearer ${token}`;
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
   }
 
   try {
-    const response = await fetch(url, { ...defaultOptions, ...options });
+    const response = await fetch(url, { ...options, headers });
     
-    if (!response.ok) {
-      if (response.status === 401) {
-        // Token expired or invalid - logout user
-        localStorage.removeItem('token');
-        localStorage.removeItem('factory_user');
-        localStorage.removeItem('factory_role');
-        window.location.href = '/';
-        throw new Error('Session expired. Please login again.');
-      }
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || error.detail || `API error: ${response.status}`);
+    if (response.status === 401) {
+      clearAuthToken();
+      window.location.href = '/';
+      throw new Error('Session expired');
     }
-    
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || error.message || `Error: ${response.status}`);
+    }
+
     return response.json();
   } catch (error) {
-    console.error('API call failed:', error);
+    console.error('API Error:', error);
     throw error;
   }
-}
+};
 
-// Employee API
+// Auth API
+export const authAPI = {
+  login: async (credentials) => {
+    const formData = new FormData();
+    formData.append('username', credentials.username);
+    formData.append('password', credentials.password);
+    
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      throw new Error('Login failed');
+    }
+    
+    const data = await response.json();
+    setAuthToken(data.access_token);
+    return data;
+  },
+
+  logout: async () => {
+    clearAuthToken();
+  },
+
+  getCurrentUser: async () => {
+    return apiCall('/auth/me');
+  },
+};
+
+// Employees API
 export const employeeAPI = {
-  getProfile: () => apiCall('/employees/me'),
-  updateProfile: (data) => apiCall('/employees/me', {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  }),
-  getAttendance: (params) => {
+  getAll: async (params = {}) => {
+    const queryParams = new URLSearchParams(params).toString();
+    return apiCall(`/employees?${queryParams}`);
+  },
+
+  create: async (data) => {
+    return apiCall('/employees', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (id, data) => {
+    return apiCall(`/employees/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id) => {
+    return apiCall(`/employees/${id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+// Divisions API
+export const divisionAPI = {
+  getAll: async () => {
+    return apiCall('/divisions');
+  },
+
+  create: async (data) => {
+    return apiCall('/divisions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (id, data) => {
+    return apiCall(`/divisions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+};
+
+// Departments API
+export const departmentAPI = {
+  getAll: async (divisionId) => {
+    const query = divisionId ? `?division_id=${divisionId}` : '';
+    return apiCall(`/departments${query}`);
+  },
+
+  create: async (data) => {
+    return apiCall('/departments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (id, data) => {
+    return apiCall(`/departments/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+};
+
+// Attendance API
+export const attendanceAPI = {
+  getAttendance: async (params = {}) => {
     const queryParams = new URLSearchParams(params).toString();
     return apiCall(`/attendance?${queryParams}`);
   },
-  getShifts: () => apiCall('/shifts/me'),
-  requestLeave: (data) => apiCall('/requests/leave', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  }),
-  getRequests: () => apiCall('/requests'),
-};
 
-// Manager API
-export const managerAPI = {
-  getTeam: () => apiCall('/manager/team'),
-  getTeamAttendance: (params) => {
-    const queryParams = new URLSearchParams(params).toString();
-    return apiCall(`/manager/attendance?${queryParams}`);
+  checkIn: async () => {
+    return apiCall('/attendance/check-in', {
+      method: 'POST',
+    });
   },
-  generateSchedule: (data) => apiCall('/manager/schedule/generate', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  }),
-  getPendingApprovals: () => apiCall('/manager/approvals/pending'),
-  approveRequest: (id) => apiCall(`/manager/approvals/${id}/approve`, {
-    method: 'POST',
-  }),
-  rejectRequest: (id) => apiCall(`/manager/approvals/${id}/reject`, {
-    method: 'POST',
-  }),
-};
 
-// Admin API
-export const adminAPI = {
-  getAllEmployees: (params) => {
-    const queryParams = new URLSearchParams(params).toString();
-    return apiCall(`/admin/employees?${queryParams}`);
+  checkOut: async () => {
+    return apiCall('/attendance/check-out', {
+      method: 'POST',
+    });
   },
-  createEmployee: (data) => apiCall('/admin/employees', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  }),
-  updateEmployee: (id, data) => apiCall(`/admin/employees/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  }),
-  deleteEmployee: (id) => apiCall(`/admin/employees/${id}`, {
-    method: 'DELETE',
-  }),
-  getAllDepartments: () => apiCall('/admin/departments'),
-  createDepartment: (data) => apiCall('/admin/departments', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  }),
-  generateCompanySchedule: (data) => apiCall('/admin/schedule/generate', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  }),
-  sendNotification: (data) => apiCall('/admin/notifications', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  }),
 };
 
-// Schedule API
+// Requests API
+export const requestAPI = {
+  getAll: async (params = {}) => {
+    const queryParams = new URLSearchParams(params).toString();
+    return apiCall(`/requests?${queryParams}`);
+  },
+
+  create: async (data) => {
+    return apiCall('/requests', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  approve: async (id) => {
+    return apiCall(`/requests/${id}/approve`, {
+      method: 'PUT',
+    });
+  },
+
+  reject: async (id, notes) => {
+    return apiCall(`/requests/${id}/reject`, {
+      method: 'PUT',
+      body: JSON.stringify({ notes }),
+    });
+  },
+};
+
+// Notifications API
+export const notificationAPI = {
+  getAll: async (unreadOnly = false) => {
+    return apiCall(`/notifications?unread_only=${unreadOnly}`);
+  },
+
+  markAsRead: async (id) => {
+    return apiCall(`/notifications/${id}/read`, {
+      method: 'PUT',
+    });
+  },
+
+  markAllAsRead: async () => {
+    return apiCall('/notifications/read-all', {
+      method: 'PUT',
+    });
+  },
+
+  send: async (data) => {
+    return apiCall('/notifications', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+};
+
+// Schedules API
 export const scheduleAPI = {
-  generate: (data) => apiCall('/schedules/generate', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  }),
-  getAll: () => apiCall('/schedules'),
-  getById: (id) => apiCall(`/schedules/${id}`),
-};
+  getAll: async (params = {}) => {
+    const queryParams = new URLSearchParams(params).toString();
+    return apiCall(`/schedules?${queryParams}`);
+  },
 
-// Utility function for mock data (remove in production)
-export const mockApi = {
-  delay: (ms) => new Promise(resolve => setTimeout(resolve, ms)),
-  
-  getMockData: async (endpoint) => {
-    await mockApi.delay(500); // Simulate network delay
-    
-    const mockData = {
-      '/employees': [
-        { id: 1, name: 'John Doe', email: 'john@factory.com', department: 'Production' },
-        { id: 2, name: 'Jane Smith', email: 'jane@factory.com', department: 'Quality' },
-      ],
-      '/attendance': {
-        present: 142,
-        absent: 8,
-        late: 12,
-        records: []
-      },
-      '/shifts/me': [
-        { id: 1, date: '2024-01-15', shift: 'Morning', time: '08:00 - 16:00' },
-        { id: 2, date: '2024-01-16', shift: 'Morning', time: '08:00 - 16:00' },
-      ],
-    };
-    
-    return mockData[endpoint] || { message: 'Mock data not available' };
+  create: async (data) => {
+    return apiCall('/schedules', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  approve: async (id) => {
+    return apiCall(`/schedules/${id}/approve`, {
+      method: 'PUT',
+    });
   },
 };
 
-export default apiCall;
+// Shifts API
+export const shiftAPI = {
+  getAll: async () => {
+    return apiCall('/shifts');
+  },
+};
+
+// Dashboard API
+export const dashboardAPI = {
+  getStats: async () => {
+    return apiCall('/dashboard/stats');
+  },
+};
+
+// Reports API
+export const reportAPI = {
+  generateAttendanceReport: async (params, exportToExcel = false) => {
+    const queryParams = new URLSearchParams(params).toString();
+    const url = `/reports/attendance?${queryParams}&export=${exportToExcel}`;
+    
+    if (exportToExcel) {
+      const response = await fetch(`${API_BASE_URL}${url}`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate report');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `attendance_report_${params.start_date}_${params.end_date}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      
+      return { success: true };
+    } else {
+      return apiCall(url);
+    }
+  },
+};
