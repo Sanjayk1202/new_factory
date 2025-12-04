@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { ROLES, DIVISIONS, DEPARTMENTS, getDivisionById, getDepartmentById } from '../utils/constants';
+import { authAPI, setAuthToken, clearAuthToken } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -12,103 +12,98 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('factory_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const [role, setRole] = useState(() => {
-    const saved = localStorage.getItem('factory_role');
-    return saved || ROLES.EMPLOYEE;
-  });
+  useEffect(() => {
+    checkAuth();
+  }, []);
 
-  const [division, setDivision] = useState(() => {
-    const saved = localStorage.getItem('factory_division');
-    return saved || 'production';
-  });
-
-  const [department, setDepartment] = useState(() => {
-    const saved = localStorage.getItem('factory_department');
-    return saved || 'prod_line_a';
-  });
-
-  const login = (userData, userRole, userDivision, userDepartment) => {
-    const userObj = {
-      ...userData,
-      role: userRole,
-      division: userDivision,
-      department: userDepartment,
-    };
-    
-    setUser(userObj);
-    setRole(userRole);
-    setDivision(userDivision);
-    setDepartment(userDepartment);
-    
-    localStorage.setItem('factory_user', JSON.stringify(userObj));
-    localStorage.setItem('factory_role', userRole);
-    localStorage.setItem('factory_division', userDivision);
-    localStorage.setItem('factory_department', userDepartment);
+  const checkAuth = async () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      setAuthToken(token);
+      try {
+        const userData = await authAPI.getCurrentUser();
+        setUser(userData);
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        clearAuthToken();
+        setUser(null);
+      }
+    }
+    setLoading(false);
   };
 
-  const logout = () => {
-    setUser(null);
-    setRole(ROLES.EMPLOYEE);
-    setDivision('production');
-    setDepartment('prod_line_a');
-    
-    localStorage.removeItem('factory_user');
-    localStorage.removeItem('factory_role');
-    localStorage.removeItem('factory_division');
-    localStorage.removeItem('factory_department');
-    localStorage.removeItem('token');
+  const login = async (username, password) => {
+    try {
+      const data = await authAPI.login({ username, password });
+      setUser(data.user);
+      return { success: true, user: data.user };
+    } catch (error) {
+      console.error('Login failed:', error);
+      return { success: false, error: error.message };
+    }
   };
 
-  // Remove auto-login for demo - users must login with real credentials
+  const logout = async () => {
+    try {
+      await authAPI.logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setUser(null);
+      clearAuthToken();
+      window.location.href = '/';
+    }
+  };
 
-  // Get user's scope information
+  const updateUser = (updatedUser) => {
+    setUser(updatedUser);
+  };
+
   const getUserScope = () => {
     if (!user) return null;
     
-    const divisionInfo = getDivisionById(division);
-    const departmentInfo = getDepartmentById(division, department);
-    
     return {
-      division: divisionInfo,
-      department: departmentInfo,
-      isDivisionManager: role === ROLES.DIVISION_MANAGER,
-      isDepartmentManager: role === ROLES.DEPARTMENT_MANAGER,
-      isEmployee: role === ROLES.EMPLOYEE,
+      division: user.division,
+      department: user.department,
+      isDivisionManager: user.role === 'division_manager',
+      isDepartmentManager: user.role === 'department_manager',
+      isEmployee: user.role === 'employee',
+      isAdmin: user.role === 'admin',
     };
   };
 
-  // Get accessible divisions for the user
   const getAccessibleDivisions = () => {
-    if (role === ROLES.ADMIN) return DIVISIONS;
-    if (role === ROLES.DIVISION_MANAGER || role === ROLES.DEPARTMENT_MANAGER) {
-      return DIVISIONS.filter(d => d.id === division);
+    // This would come from API in real implementation
+    if (user?.role === 'admin') {
+      return [
+        { id: 1, name: 'Production Division', color: 'blue' },
+        { id: 2, name: 'Quality Assurance', color: 'green' },
+        { id: 3, name: 'Maintenance', color: 'orange' },
+        { id: 4, name: 'Logistics', color: 'purple' },
+        { id: 5, name: 'Administration', color: 'gray' },
+      ];
+    }
+    if (user?.role === 'division_manager') {
+      return [{ id: user.division_id, name: user.division, color: 'blue' }];
     }
     return [];
   };
 
-  // Get accessible departments for the user
   const getAccessibleDepartments = () => {
-    if (role === ROLES.ADMIN) return Object.values(DEPARTMENTS).flat();
-    if (role === ROLES.DIVISION_MANAGER) return DEPARTMENTS[division] || [];
-    if (role === ROLES.DEPARTMENT_MANAGER) {
-      return DEPARTMENTS[division]?.filter(d => d.id === department) || [];
-    }
+    // This would come from API in real implementation
     return [];
   };
 
   return (
     <AuthContext.Provider value={{ 
       user, 
-      role, 
-      division,
-      department,
+      loading,
       login, 
       logout,
+      updateUser,
       getUserScope,
       getAccessibleDivisions,
       getAccessibleDepartments,
